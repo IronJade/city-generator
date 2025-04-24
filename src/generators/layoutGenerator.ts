@@ -1,4 +1,4 @@
-import { CityLayout, MapSettings } from '../models/interfaces';
+import { CityLayout, MapSettings, District } from '../models/interfaces';
 
 export class LayoutGenerator {
   private mapSettings: MapSettings;
@@ -161,8 +161,8 @@ export class LayoutGenerator {
   /**
    * Creates districts for building placement
    */
-  createDistricts(buildingCount: number, layout: CityLayout): { x: number, y: number, radius: number }[] {
-    const districts: { x: number, y: number, radius: number }[] = [];
+  createDistricts(buildingCount: number, layout: CityLayout): District[] {
+    const districts: District[] = [];
     const districtCount = Math.max(3, Math.floor(buildingCount / 20));
     
     // Generate district centers based on road intersections or points
@@ -188,5 +188,64 @@ export class LayoutGenerator {
     }
     
     return districts;
+  }
+  
+  /**
+   * Finds road intersections in the layout
+   */
+  findRoadIntersections(layout: CityLayout): {x: number, y: number}[] {
+    const intersections: {x: number, y: number}[] = [];
+    
+    // Check each pair of roads for intersections
+    for (let i = 0; i < layout.roads.length; i++) {
+      for (let j = i + 1; j < layout.roads.length; j++) {
+        const road1 = layout.roads[i];
+        const road2 = layout.roads[j];
+        
+        // Find intersection point (simplified line intersection)
+        const intersection = this.findLineIntersection(
+          road1.start.x, road1.start.y, road1.end.x, road1.end.y,
+          road2.start.x, road2.start.y, road2.end.x, road2.end.y
+        );
+        
+        if (intersection) {
+          intersections.push(intersection);
+        }
+      }
+    }
+    
+    return intersections;
+  }
+  
+  /**
+   * Finds intersection point of two line segments
+   */
+  private findLineIntersection(
+    x1: number, y1: number, x2: number, y2: number,
+    x3: number, y3: number, x4: number, y4: number
+  ): {x: number, y: number} | null {
+    // Calculate determinants
+    const det = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    
+    // Lines are parallel if determinant is zero
+    if (det === 0) {
+      return null;
+    }
+    
+    // Calculate intersection point
+    const x = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / det;
+    const y = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / det;
+    
+    // Check if intersection is within both line segments
+    if (
+      x >= Math.min(x1, x2) && x <= Math.max(x1, x2) &&
+      x >= Math.min(x3, x4) && x <= Math.max(x3, x4) &&
+      y >= Math.min(y1, y2) && y <= Math.max(y1, y2) &&
+      y >= Math.min(y3, y4) && y <= Math.max(y3, y4)
+    ) {
+      return { x, y };
+    }
+    
+    return null;
   }
 }

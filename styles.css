@@ -1,5 +1,18 @@
-/* City Generator Plugin Styles */
+/* City Generator Plugin Styles - Improved Version */
 
+/* Main Modal Styles */
+.city-generator-container {
+    display: flex;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.city-generator-column {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Input Styles */
 .city-generator-input {
     margin-bottom: 15px;
 }
@@ -18,6 +31,7 @@
     border: 1px solid var(--background-modifier-border);
 }
 
+/* Button Styles */
 .city-generator-buttons {
     display: flex;
     justify-content: space-between;
@@ -26,6 +40,29 @@
 
 .city-generator-buttons button {
     padding: 8px 16px;
+    margin-right: 10px;
+}
+
+/* Preview Styles */
+.city-generator-preview {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 10px;
+    min-height: 300px;
+    background-color: var(--background-primary);
+    overflow: auto;
+    margin-bottom: 15px;
+}
+
+.city-generator-preview svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.city-generator-preview-error {
+    color: var(--text-error);
+    padding: 20px;
+    text-align: center;
 }
 
 /* Settlement Type Editor */
@@ -72,6 +109,7 @@
     border-radius: 4px;
     overflow: hidden;
     margin-bottom: 20px;
+    background-color: var(--background-primary-alt);
 }
 
 /* Building List */
@@ -139,8 +177,58 @@
     font-weight: bold;
 }
 
-/* Export Button */
-.city-export-button {
-    margin-top: 20px;
-    text-align: right;
+/* Settings Tab */
+.city-generator-setting-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.city-generator-setting-header h3 {
+    margin: 0;
+    margin-right: 10px;
+}
+
+.city-generator-setting-description {
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+
+/* Tooltip Enhancements */
+.setting-item-control .tooltip {
+    white-space: nowrap;
+}
+
+/* Loading Indicator */
+.city-generator-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100px;
+}
+
+.city-generator-loading-spinner {
+    border: 4px solid var(--background-modifier-border);
+    border-top: 4px solid var(--interactive-accent);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin-right: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .city-generator-container {
+        flex-direction: column;
+    }
+    
+    .city-building-list {
+        grid-template-columns: 1fr;
+    }
 }
