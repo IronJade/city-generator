@@ -1,4 +1,4 @@
-# city-generator# City Generator for Obsidian
+# City Generator for Obsidian
 
 A comprehensive city generation plugin for Obsidian that allows you to create detailed cities, towns, and villages for your worldbuilding or role-playing game campaigns.
 
@@ -76,7 +76,7 @@ The economy system affects prices of wares based on:
 
 This plugin is built using TypeScript and follows the Obsidian plugin structure.
 
-To build from source:
+### Quick Start
 
 ```bash
 # Clone the repository
@@ -86,9 +86,63 @@ git clone https://github.com/ironjade/obsidian-city-generator.git
 cd obsidian-city-generator
 npm install
 
-# Build
-npm run build
+# Apply compatibility fixes (recommended for first-time setup)
+npm run fix
+
+# Build using the safer build script
+npm run build:safe
 ```
+
+### Available Scripts
+
+- `npm run dev` - Start development with hot-reloading
+- `npm run build` - Build the plugin for production
+- `npm run build:safe` - Build with extra compatibility for older Obsidian versions
+- `npm run fix` - Apply compatibility fixes for TypeScript errors
+- `npm run version` - Bump versions for plugin release
+
+### Project Structure
+
+```
+city-generator/
+├── .github/workflows/    # GitHub Actions workflow files
+├── src/                  # Source code
+│   └── main.ts           # Main plugin code
+├── styles.css            # Plugin styling
+├── manifest.json         # Obsidian plugin manifest
+├── package.json          # NPM package configuration
+├── tsconfig.json         # TypeScript configuration
+├── esbuild.config.mjs    # Build configuration
+└── versions.json         # Version compatibility information
+```
+
+### Troubleshooting TypeScript Errors
+
+If you encounter TypeScript errors related to @types/node or @codemirror, try the following:
+
+1. Use the alternative build script that skips type checking:
+   ```bash
+   node build.js
+   ```
+
+2. If errors persist, use a specific version of TypeScript that's compatible with Obsidian:
+   ```bash
+   npm install typescript@4.4.4 @types/node@16.11.6 --save-exact
+   ```
+
+3. For CodeMirror "type keyword in exports" errors, modify your build process to bypass TypeScript checking with:
+   ```bash
+   npm install esbuild@0.17.19 --save-exact
+   node esbuild.config.mjs production
+   ```
+
+4. As a last resort, you can temporarily disable type checking for the CodeMirror modules by adding them to the `exclude` array in tsconfig.json:
+   ```json
+   "exclude": [
+     "node_modules/**/*",
+     "node_modules/@codemirror/**/*"
+   ]
+   ```
 
 ## License
 
