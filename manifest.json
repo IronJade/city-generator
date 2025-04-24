@@ -1,0 +1,10 @@
+{
+	"id": "city-generator",
+	"name": "City Generator",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Generate detailed cities, towns, and villages with maps and building information",
+	"author": "IronJade",
+	"authorUrl": "https://github.com/ironjade",
+	"isDesktopOnly": false
+}

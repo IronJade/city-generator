@@ -1,0 +1,146 @@
+/* City Generator Plugin Styles */
+
+.city-generator-input {
+    margin-bottom: 15px;
+}
+
+.city-generator-input label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.city-generator-input input, 
+.city-generator-input select {
+    width: 100%;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.city-generator-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+
+.city-generator-buttons button {
+    padding: 8px 16px;
+}
+
+/* Settlement Type Editor */
+.city-generator-settlement-types {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 20px;
+}
+
+.city-generator-settlement-type {
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.city-generator-settlement-type h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+.city-generator-building-distribution {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+/* Last Generated City */
+.city-generator-last-city {
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.city-generator-last-city p {
+    margin: 5px 0;
+}
+
+/* City Map */
+.city-map-container {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+/* Building List */
+.city-building-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.city-building-card {
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 15px;
+    background-color: var(--background-secondary);
+}
+
+.city-building-card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.city-building-card-header h3 {
+    margin: 0 0 0 10px;
+}
+
+.city-building-icon {
+    font-size: 1.5em;
+}
+
+.city-wares-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.city-wares-table th, 
+.city-wares-table td {
+    padding: 5px;
+    text-align: left;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* Economy Overview */
+.city-economy {
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.city-economy-indicators {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+}
+
+.city-economy-indicator {
+    text-align: center;
+    flex: 1;
+}
+
+.city-economy-indicator-value {
+    font-size: 1.5em;
+    font-weight: bold;
+}
+
+/* Export Button */
+.city-export-button {
+    margin-top: 20px;
+    text-align: right;
+}
