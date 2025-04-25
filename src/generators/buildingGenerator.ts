@@ -93,7 +93,9 @@ import {
      */
     assignBuildingPositions(buildings: Building[], layout: CityLayout, districts: District[]) {
       // Create a grid to track occupied positions and water features
-      const grid: number[][] = Array(layout.height).fill(0).map(() => Array(layout.width).fill(0));
+      const gridHeight = Math.floor(layout.height);
+      const gridWidth = Math.floor(layout.width);
+      const grid: number[][] = Array(gridHeight).fill(0).map(() => Array(gridWidth).fill(0));
       
       // Legend for grid values:
       // 0 = empty
@@ -104,10 +106,10 @@ import {
       // Mark water positions
       layout.waterFeatures.forEach(feature => {
         // Create a waterMap using polygons for lakes and paths for rivers
-        const waterMap = this.createWaterMap(layout.width, layout.height, [feature]);
+        const waterMap = this.createWaterMap(gridWidth, gridHeight, [feature]);
         
-        for (let y = 0; y < layout.height; y++) {
-          for (let x = 0; x < layout.width; x++) {
+        for (let y = 0; y < gridHeight; y++) {
+          for (let x = 0; x < gridWidth; x++) {
             if (waterMap[y] && waterMap[y][x]) {
               grid[y][x] = 2; // Water
             }
@@ -133,11 +135,11 @@ import {
           // Mark road and buffer zone
           for (let offsetY = -roadWidth/2; offsetY <= roadWidth/2; offsetY++) {
             for (let offsetX = -roadWidth/2; offsetX <= roadWidth/2; offsetX++) {
-              const markX = x + offsetX;
-              const markY = y + offsetY;
+              const markX = x + Math.floor(offsetX);
+              const markY = y + Math.floor(offsetY);
               
-              if (markY >= 0 && markY < layout.height && 
-                  markX >= 0 && markX < layout.width) {
+              if (markY >= 0 && markY < gridHeight && 
+                  markX >= 0 && markX < gridWidth) {
                 // Only mark as road if not already water
                 if (grid[markY][markX] !== 2) {
                   grid[markY][markX] = 1; // Road
@@ -159,8 +161,8 @@ import {
       
       // Create an array of road adjacent positions for placing buildings
       const roadAdjacentPositions: {x: number, y: number}[] = [];
-      for (let y = 0; y < layout.height; y++) {
-        for (let x = 0; x < layout.width; x++) {
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
           // If this position is empty and adjacent to a road
           if (grid[y][x] === 0 && this.isAdjacentToRoad(x, y, grid)) {
             roadAdjacentPositions.push({x, y});
@@ -251,13 +253,17 @@ import {
       const height = grid.length;
       const width = grid[0].length;
       
+      // Ensure x and y are integers
+      const safeX = Math.floor(x);
+      const safeY = Math.floor(y);
+      
       // Check all 8 adjacent positions
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue; // Skip center
           
-          const checkX = x + dx;
-          const checkY = y + dy;
+          const checkX = safeX + dx;
+          const checkY = safeY + dy;
           
           if (checkY >= 0 && checkY < height && checkX >= 0 && checkX < width) {
             if (grid[checkY][checkX] === 1) { // Road
@@ -313,11 +319,15 @@ import {
       const height = grid.length;
       const width = grid[0].length;
       
+      // Ensure x and y are integers
+      const safeX = Math.floor(x);
+      const safeY = Math.floor(y);
+      
       // Search in a square around the position
       for (let dy = -distance; dy <= distance; dy++) {
         for (let dx = -distance; dx <= distance; dx++) {
-          const checkX = x + dx;
-          const checkY = y + dy;
+          const checkX = safeX + dx;
+          const checkY = safeY + dy;
           
           if (checkY >= 0 && checkY < height && checkX >= 0 && checkX < width) {
             if (grid[checkY][checkX] === 3) { // Building
@@ -426,10 +436,12 @@ import {
      * Create a water map for a specific feature
      */
     private createWaterMap(width: number, height: number, waterFeatures: { type: string; points: { x: number; y: number; }[]; }[]): boolean[][] {
-      // Create a 2D array filled with false
-      const waterMap: boolean[][] = Array(height)
+      // Create a 2D array with proper dimensions, ensure we're using integers
+      const safeHeight = Math.floor(height);
+      const safeWidth = Math.floor(width);
+      const waterMap: boolean[][] = Array(safeHeight)
         .fill(false)
-        .map(() => Array(width).fill(false));
+        .map(() => Array(safeWidth).fill(false));
       
       // Mark water features
       waterFeatures.forEach(feature => {
@@ -524,10 +536,10 @@ import {
             for (let offsetX = -width/2; offsetX <= width/2; offsetX++) {
               // Check if within circle
               if (offsetX * offsetX + offsetY * offsetY <= (width/2) * (width/2)) {
-                const markX = x + offsetX;
-                const markY = y + offsetY;
+                const markX = Math.floor(x + offsetX);
+                const markY = Math.floor(y + offsetY);
                 
-                // Check bounds
+                // Check bounds more carefully
                 if (markY >= 0 && markY < waterMap.length && 
                     markX >= 0 && markX < waterMap[0].length) {
                   waterMap[markY][markX] = true;
