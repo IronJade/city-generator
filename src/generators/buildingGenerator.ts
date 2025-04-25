@@ -1,5 +1,3 @@
-// src/generators/buildingGenerator.ts
-
 import { 
     Building, 
     BuildingType, 
@@ -20,7 +18,7 @@ import {
      * Generates a building of the specified type
      */
     generateBuilding(buildingType: BuildingType): Building {
-      // Generate a unique ID with timestamp + random number
+      // Generate a unique ID
       const buildingId = `building_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       
       // Select a random name from possible names
@@ -91,38 +89,63 @@ import {
     }
   
     /**
-     * Assigns positions to buildings in the city layout
+     * Assigns positions to buildings in the city layout, avoiding water features
      */
-    assignBuildingPositions(buildings: Building[], layout: CityLayout, districts: District[]): void {
-      // Create a grid to track occupied positions
-      const grid: boolean[][] = Array(layout.height).fill(false).map(() => Array(layout.width).fill(false));
+    assignBuildingPositions(buildings: Building[], layout: CityLayout, districts: District[]) {
+      // Create a grid to track occupied positions and water features
+      const grid: number[][] = Array(layout.height).fill(0).map(() => Array(layout.width).fill(0));
       
-      // Mark road positions as occupied with some buffer
-      layout.roads.forEach(road => {
-        this.markRoadOnGrid(road, grid, 5); // 5 pixel buffer
+      // Legend for grid values:
+      // 0 = empty
+      // 1 = road
+      // 2 = water
+      // 3 = building
+      
+      // Mark water positions
+      layout.waterFeatures.forEach(feature => {
+        // Create a waterMap using polygons for lakes and paths for rivers
+        const waterMap = this.createWaterMap(layout.width, layout.height, [feature]);
+        
+        for (let y = 0; y < layout.height; y++) {
+          for (let x = 0; x < layout.width; x++) {
+            if (waterMap[y] && waterMap[y][x]) {
+              grid[y][x] = 2; // Water
+            }
+          }
+        }
       });
       
-      // Mark water positions as occupied
-      layout.waterFeatures.forEach(feature => {
-        feature.points.forEach(point => {
-          const x = Math.floor(point.x);
-          const y = Math.floor(point.y);
+      // Mark road positions (use a width to create a buffer around roads)
+      layout.roads.forEach(road => {
+        const roadWidth = 5; // Width of road plus buffer zone
+        
+        // Mark points along each road segment
+        const dx = road.end.x - road.start.x;
+        const dy = road.end.y - road.start.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const steps = Math.max(length * 2, 20); // Ensure enough density
+        
+        for (let step = 0; step <= steps; step++) {
+          const t = step / steps;
+          const x = Math.floor(road.start.x + dx * t);
+          const y = Math.floor(road.start.y + dy * t);
           
-          if (this.isValidPosition(x, y, layout)) {
-            grid[y][x] = true;
-            
-            // Add buffer around water
-            for (let dx = -5; dx <= 5; dx++) {
-              for (let dy = -5; dy <= 5; dy++) {
-                const nx = x + dx;
-                const ny = y + dy;
-                if (this.isValidPosition(nx, ny, layout)) {
-                  grid[ny][nx] = true;
+          // Mark road and buffer zone
+          for (let offsetY = -roadWidth/2; offsetY <= roadWidth/2; offsetY++) {
+            for (let offsetX = -roadWidth/2; offsetX <= roadWidth/2; offsetX++) {
+              const markX = x + offsetX;
+              const markY = y + offsetY;
+              
+              if (markY >= 0 && markY < layout.height && 
+                  markX >= 0 && markX < layout.width) {
+                // Only mark as road if not already water
+                if (grid[markY][markX] !== 2) {
+                  grid[markY][markX] = 1; // Road
                 }
               }
             }
           }
-        });
+        }
       });
       
       // Group buildings by type for better placement
@@ -134,656 +157,385 @@ import {
         buildingsByType[building.typeId].push(building);
       });
       
-      // Create an array of road segments for building placement
-      const roadSegments = this.generateRoadSegments(layout.roads);
-      
-      // Place important buildings first
-      const importantBuildings = buildings.filter(b => 
-        ['townHall', 'cityHall', 'temple', 'market', 'tavern'].includes(b.typeId)
-      );
-      
-      const commercialBuildings = buildings.filter(b => 
-        ['blacksmith', 'generalStore', 'bakery', 'butcher', 'tailor', 'jeweler', 'alchemist', 'library'].includes(b.typeId) &&
-        !importantBuildings.includes(b)
-      );
-      
-      const residentialBuildings = buildings.filter(b => 
-        b.typeId === 'residence'
-      );
-      
-      const farmBuildings = buildings.filter(b => 
-        b.typeId === 'farm'
-      );
-      
-      // Place important buildings at intersections or district centers
-      this.placeImportantBuildings(importantBuildings, grid, layout, districts);
-      
-      // Place commercial buildings along main roads
-      this.placeCommercialBuildings(commercialBuildings, grid, layout, roadSegments);
-      
-      // Place residential buildings in clusters around important buildings
-      this.placeResidentialBuildings(residentialBuildings, grid, layout, districts, importantBuildings);
-      
-      // Place farms at the outskirts
-      this.placeFarmBuildings(farmBuildings, grid, layout);
-      
-      // Check for any unplaced buildings and find spots for them
-      buildings.forEach(building => {
-        if (building.position.x === 0 && building.position.y === 0) {
-          this.findAvailableSpot(building, grid, layout);
-        }
-      });
-    }
-  
-    /**
-     * Places important buildings at intersections or district centers
-     */
-    private placeImportantBuildings(
-      buildings: Building[], 
-      grid: boolean[][], 
-      layout: CityLayout, 
-      districts: District[]
-    ): void {
-      if (buildings.length === 0) return;
-      
-      // Find road intersections
-      const intersections = this.findRoadIntersections(layout.roads);
-      
-      // Combine intersections and district centers as placement points
-      const placementPoints = [
-        ...intersections,
-        ...districts.map(d => ({ x: d.x, y: d.y }))
-      ];
-      
-      // Place each important building
-      buildings.forEach(building => {
-        if (placementPoints.length > 0) {
-          // Find the best placement point
-          const pointIndex = Math.floor(Math.random() * placementPoints.length);
-          const point = placementPoints[pointIndex];
-          
-          // Try to find a spot near the chosen point
-          let placed = false;
-          const searchRadius = 30;
-          
-          for (let radius = 10; radius <= searchRadius && !placed; radius += 5) {
-            for (let angle = 0; angle < Math.PI * 2 && !placed; angle += Math.PI / 8) {
-              const x = Math.floor(point.x + Math.cos(angle) * radius);
-              const y = Math.floor(point.y + Math.sin(angle) * radius);
-              
-              if (this.isValidPosition(x, y, layout) && !grid[y][x]) {
-                building.position = { x, y };
-                this.markOccupied(x, y, grid, 10); // Mark with buffer
-                placed = true;
-                
-                // Remove used point
-                placementPoints.splice(pointIndex, 1);
-              }
-            }
+      // Create an array of road adjacent positions for placing buildings
+      const roadAdjacentPositions: {x: number, y: number}[] = [];
+      for (let y = 0; y < layout.height; y++) {
+        for (let x = 0; x < layout.width; x++) {
+          // If this position is empty and adjacent to a road
+          if (grid[y][x] === 0 && this.isAdjacentToRoad(x, y, grid)) {
+            roadAdjacentPositions.push({x, y});
           }
-          
-          // If still not placed, try any open spot near the point
-          if (!placed) {
-            this.findSpotNearPoint(building, point.x, point.y, 50, grid, layout);
-          }
-        } else {
-          // If no placement points left, find any good spot
-          this.findAvailableSpot(building, grid, layout);
         }
-      });
-    }
-  
-    /**
-     * Places commercial buildings along main roads
-     */
-    private placeCommercialBuildings(
-      buildings: Building[], 
-      grid: boolean[][], 
-      layout: CityLayout, 
-      roadSegments: { start: { x: number, y: number }, end: { x: number, y: number } }[]
-    ): void {
-      if (buildings.length === 0 || roadSegments.length === 0) return;
+      }
       
-      // Sort road segments by length (descending) to prefer main roads
-      const sortedSegments = [...roadSegments].sort((a, b) => {
-        const lengthA = Math.sqrt(
-          Math.pow(a.end.x - a.start.x, 2) + Math.pow(a.end.y - a.start.y, 2)
-        );
-        const lengthB = Math.sqrt(
-          Math.pow(b.end.x - b.start.x, 2) + Math.pow(b.end.y - b.start.y, 2)
-        );
-        return lengthB - lengthA;
-      });
+      // Shuffle road-adjacent positions to ensure random distribution
+      this.shuffleArray(roadAdjacentPositions);
       
-      // Main roads are the first third of sorted segments
-      const mainRoads = sortedSegments.slice(0, Math.max(1, Math.floor(sortedSegments.length / 3)));
+      // First place important buildings (non-residences) along roads
+      const importantBuildings = buildings.filter(b => b.typeId !== 'residence');
       
-      // Place buildings along main roads
-      buildings.forEach(building => {
+      for (let i = 0; i < importantBuildings.length; i++) {
+        const building = importantBuildings[i];
+        
+        // Try to find a road-adjacent spot
         let placed = false;
         
-        // Try main roads first
-        for (const road of mainRoads) {
-          if (placed) break;
+        // Look through road-adjacent positions
+        for (let j = 0; j < roadAdjacentPositions.length; j++) {
+          const pos = roadAdjacentPositions[j];
           
-          // Try different positions along the road
-          for (let t = 0.1; t < 0.9; t += 0.1) {
-            // Get position along road
-            const roadX = road.start.x + (road.end.x - road.start.x) * t;
-            const roadY = road.start.y + (road.end.y - road.start.y) * t;
-            
-            // Calculate perpendicular direction
-            const roadDX = road.end.x - road.start.x;
-            const roadDY = road.end.y - road.start.y;
-            const length = Math.sqrt(roadDX * roadDX + roadDY * roadDY);
-            
-            if (length === 0) continue;
-            
-            const perpX = -roadDY / length;
-            const perpY = roadDX / length;
-            
-            // Try both sides of the road
-            for (const side of [-1, 1]) {
-              if (placed) break;
-              
-              // Try different distances from the road
-              for (let dist = 10; dist <= 30; dist += 5) {
-                const x = Math.floor(roadX + perpX * dist * side);
-                const y = Math.floor(roadY + perpY * dist * side);
-                
-                if (this.isValidPosition(x, y, layout) && !grid[y][x]) {
-                  building.position = { x, y };
-                  this.markOccupied(x, y, grid, 10);
-                  placed = true;
-                  break;
-                }
-              }
-            }
-            
-            if (placed) break;
-          }
-        }
-        
-        // If not placed, try secondary roads
-        if (!placed) {
-          for (const road of sortedSegments.slice(mainRoads.length)) {
-            if (placed) break;
-            
-            // Similar approach as main roads but with fewer attempts
-            for (let t = 0.2; t < 0.8; t += 0.2) {
-              const roadX = road.start.x + (road.end.x - road.start.x) * t;
-              const roadY = road.start.y + (road.end.y - road.start.y) * t;
-              
-              const roadDX = road.end.x - road.start.x;
-              const roadDY = road.end.y - road.start.y;
-              const length = Math.sqrt(roadDX * roadDX + roadDY * roadDY);
-              
-              if (length === 0) continue;
-              
-              const perpX = -roadDY / length;
-              const perpY = roadDX / length;
-              
-              for (const side of [-1, 1]) {
-                if (placed) break;
-                
-                for (let dist = 10; dist <= 20; dist += 5) {
-                  const x = Math.floor(roadX + perpX * dist * side);
-                  const y = Math.floor(roadY + perpY * dist * side);
-                  
-                  if (this.isValidPosition(x, y, layout) && !grid[y][x]) {
-                    building.position = { x, y };
-                    this.markOccupied(x, y, grid, 10);
-                    placed = true;
-                    break;
-                  }
-                }
-              }
-              
-              if (placed) break;
-            }
-          }
-        }
-        
-        // If still not placed, find any good spot
-        if (!placed) {
-          this.findAvailableSpot(building, grid, layout);
-        }
-      });
-    }
-  
-    /**
-     * Places residential buildings in clusters around important buildings or in districts
-     */
-    private placeResidentialBuildings(
-      buildings: Building[], 
-      grid: boolean[][], 
-      layout: CityLayout, 
-      districts: District[],
-      importantBuildings: Building[]
-    ): void {
-      if (buildings.length === 0) return;
-      
-      // Group buildings into clusters for each district
-      const buildingsPerDistrict = Math.ceil(buildings.length / Math.max(1, districts.length));
-      const buildingGroups: Building[][] = [];
-      
-      for (let i = 0; i < districts.length; i++) {
-        const start = i * buildingsPerDistrict;
-        const end = Math.min(start + buildingsPerDistrict, buildings.length);
-        
-        if (start < end) {
-          buildingGroups.push(buildings.slice(start, end));
-        }
-      }
-      
-      // If no districts, create one group
-      if (buildingGroups.length === 0 && buildings.length > 0) {
-        buildingGroups.push(buildings);
-      }
-      
-      // Place each group in its district
-      buildingGroups.forEach((group, index) => {
-        const district = index < districts.length ? districts[index] : null;
-        
-        if (district) {
-          // Place buildings in this district
-          this.placeResidentialCluster(group, district.x, district.y, district.radius, grid, layout);
-        } else {
-          // If no district, place around important buildings if available
-          if (importantBuildings.length > 0) {
-            const targetBuilding = importantBuildings[index % importantBuildings.length];
-            this.placeResidentialCluster(
-              group, 
-              targetBuilding.position.x, 
-              targetBuilding.position.y, 
-              50,
-              grid,
-              layout
-            );
-          } else {
-            // Last resort: place randomly
-            group.forEach(building => {
-              this.findAvailableSpot(building, grid, layout);
-            });
-          }
-        }
-      });
-    }
-  
-    /**
-     * Places residential buildings in a cluster around a central point
-     */
-    private placeResidentialCluster(
-      buildings: Building[],
-      centerX: number,
-      centerY: number,
-      radius: number,
-      grid: boolean[][],
-      layout: CityLayout
-    ): void {
-      // Create positions in a rough grid pattern around the center
-      const positions: { x: number, y: number }[] = [];
-      const spacing = 20; // Distance between houses
-      
-      // Generate positions in a grid-like pattern
-      for (let r = spacing; r <= radius; r += spacing) {
-        const circumference = 2 * Math.PI * r;
-        const pointCount = Math.floor(circumference / spacing);
-        
-        for (let i = 0; i < pointCount; i++) {
-          const angle = (i / pointCount) * Math.PI * 2;
-          
-          // Add some randomness to avoid a perfect grid
-          const jitter = Math.random() * 10 - 5;
-          const jitterAngle = angle + (Math.random() * 0.2 - 0.1);
-          
-          const x = Math.floor(centerX + Math.cos(jitterAngle) * (r + jitter));
-          const y = Math.floor(centerY + Math.sin(jitterAngle) * (r + jitter));
-          
-          if (this.isValidPosition(x, y, layout)) {
-            positions.push({ x, y });
-          }
-        }
-      }
-      
-      // Shuffle positions to avoid patterns
-      this.shuffleArray(positions);
-      
-      // Place buildings at available positions
-      buildings.forEach(building => {
-        let placed = false;
-        
-        // Try available positions
-        for (let i = 0; i < positions.length; i++) {
-          const pos = positions[i];
-          
-          if (!grid[pos.y][pos.x]) {
+          // Check if position is empty and not in water
+          if (grid[pos.y][pos.x] === 0) {
             building.position = { x: pos.x, y: pos.y };
-            this.markOccupied(pos.x, pos.y, grid, 8);
+            grid[pos.y][pos.x] = 3; // Mark as building
             placed = true;
             
-            // Remove used position
-            positions.splice(i, 1);
+            // Remove this position from available spots
+            roadAdjacentPositions.splice(j, 1);
             break;
           }
         }
         
-        // If no position found, look near the center
+        // If no road-adjacent spot found, try to place near district centers
         if (!placed) {
-          this.findSpotNearPoint(building, centerX, centerY, radius + 20, grid, layout);
+          this.placeBuildingNearDistrict(building, grid, districts, layout);
         }
-      });
-    }
-  
-    /**
-     * Places farm buildings at the outskirts of the settlement
-     */
-    private placeFarmBuildings(
-      buildings: Building[],
-      grid: boolean[][],
-      layout: CityLayout
-    ): void {
-      if (buildings.length === 0) return;
-      
-      // Define the central area as the inner 50% of the map
-      const centerX = layout.width / 2;
-      const centerY = layout.height / 2;
-      const innerWidth = layout.width * 0.5;
-      const innerHeight = layout.height * 0.5;
-      
-      // Place farms in the outer regions
-      buildings.forEach(building => {
-        let placed = false;
-        let attempts = 0;
         
-        while (!placed && attempts < 50) {
-          // Generate a position outside the central area
-          let x = 0, y = 0;
+        // If still not placed, find any available spot
+        if (building.position.x === 0 && building.position.y === 0) {
+          this.findAvailableSpot(building, grid, layout);
+        }
+      }
+      
+      // Now place residences
+      const residences = buildings.filter(b => b.typeId === 'residence');
+      
+      for (let i = 0; i < residences.length; i++) {
+        const building = residences[i];
+        
+        // Try to find a spot using remaining road-adjacent positions first
+        let placed = false;
+        
+        if (roadAdjacentPositions.length > 0) {
+          const pos = roadAdjacentPositions.pop()!;
           
-          const side = Math.floor(Math.random() * 4);
-          switch (side) {
-            case 0: // Top
-              x = Math.floor(Math.random() * layout.width);
-              y = Math.floor(Math.random() * (layout.height / 4));
-              break;
-            case 1: // Right
-              x = Math.floor(layout.width * 3/4 + Math.random() * (layout.width / 4));
-              y = Math.floor(Math.random() * layout.height);
-              break;
-            case 2: // Bottom
-              x = Math.floor(Math.random() * layout.width);
-              y = Math.floor(layout.height * 3/4 + Math.random() * (layout.height / 4));
-              break;
-            case 3: // Left
-              x = Math.floor(Math.random() * (layout.width / 4));
-              y = Math.floor(Math.random() * layout.height);
-              break;
-          }
-          
-          if (this.isValidPosition(x, y, layout) && !grid[y][x]) {
-            building.position = { x, y };
-            this.markOccupied(x, y, grid, 15); // Farms need more space
+          // Check if position is empty and not in water
+          if (grid[pos.y][pos.x] === 0) {
+            building.position = { x: pos.x, y: pos.y };
+            grid[pos.y][pos.x] = 3; // Mark as building
             placed = true;
           }
-          
-          attempts++;
         }
         
-        // If still not placed, find any spot
+        // If no road-adjacent spot available, place near other buildings
+        if (!placed) {
+          placed = this.placeBuildingNearOtherBuildings(building, grid, layout);
+        }
+        
+        // If still not placed, try near district centers
+        if (!placed) {
+          placed = this.placeBuildingNearDistrict(building, grid, districts, layout);
+        }
+        
+        // If still not placed, find any available spot
         if (!placed) {
           this.findAvailableSpot(building, grid, layout);
         }
-      });
+      }
     }
   
     /**
-     * Finds an available spot near a specific point
+     * Check if a position is adjacent to a road
      */
-    private findSpotNearPoint(
-      building: Building,
-      centerX: number,
-      centerY: number,
-      maxRadius: number,
-      grid: boolean[][],
-      layout: CityLayout
-    ): void {
-      let placed = false;
+    private isAdjacentToRoad(x: number, y: number, grid: number[][]): boolean {
+      const height = grid.length;
+      const width = grid[0].length;
       
-      // Search in expanding circles
-      for (let radius = 10; radius <= maxRadius && !placed; radius += 5) {
-        // Try multiple angles at this radius
-        for (let angle = 0; angle < Math.PI * 2 && !placed; angle += Math.PI / 8) {
-          const x = Math.floor(centerX + Math.cos(angle) * radius);
-          const y = Math.floor(centerY + Math.sin(angle) * radius);
+      // Check all 8 adjacent positions
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue; // Skip center
           
-          if (this.isValidPosition(x, y, layout) && !grid[y][x]) {
-            building.position = { x, y };
-            this.markOccupied(x, y, grid, 8);
-            placed = true;
+          const checkX = x + dx;
+          const checkY = y + dy;
+          
+          if (checkY >= 0 && checkY < height && checkX >= 0 && checkX < width) {
+            if (grid[checkY][checkX] === 1) { // Road
+              return true;
+            }
           }
         }
       }
       
-      // If still not placed, try any available spot
-      if (!placed) {
-        this.findAvailableSpot(building, grid, layout);
+      return false;
+    }
+  
+    /**
+     * Try to place a building near other buildings
+     */
+    private placeBuildingNearOtherBuildings(building: Building, grid: number[][], layout: CityLayout): boolean {
+      const maxDistance = 10; // Maximum distance to search
+      
+      for (let distance = 1; distance <= maxDistance; distance++) {
+        // Find all positions at this distance that have a building nearby
+        const candidates: {x: number, y: number}[] = [];
+        
+        for (let y = 0; y < layout.height; y++) {
+          for (let x = 0; x < layout.width; x++) {
+            // Skip positions that aren't empty
+            if (grid[y][x] !== 0) continue;
+            
+            // Check if there's a building nearby
+            if (this.hasBuildingWithinDistance(x, y, grid, distance)) {
+              candidates.push({x, y});
+            }
+          }
+        }
+        
+        // If we found candidates, pick one randomly
+        if (candidates.length > 0) {
+          const index = Math.floor(Math.random() * candidates.length);
+          const pos = candidates[index];
+          
+          building.position = { x: pos.x, y: pos.y };
+          grid[pos.y][pos.x] = 3; // Mark as building
+          return true;
+        }
+      }
+      
+      return false;
+    }
+  
+    /**
+     * Check if there's a building within a certain distance
+     */
+    private hasBuildingWithinDistance(x: number, y: number, grid: number[][], distance: number): boolean {
+      const height = grid.length;
+      const width = grid[0].length;
+      
+      // Search in a square around the position
+      for (let dy = -distance; dy <= distance; dy++) {
+        for (let dx = -distance; dx <= distance; dx++) {
+          const checkX = x + dx;
+          const checkY = y + dy;
+          
+          if (checkY >= 0 && checkY < height && checkX >= 0 && checkX < width) {
+            if (grid[checkY][checkX] === 3) { // Building
+              return true;
+            }
+          }
+        }
+      }
+      
+      return false;
+    }
+  
+    /**
+     * Try to place a building near a district center
+     */
+    private placeBuildingNearDistrict(
+      building: Building, 
+      grid: number[][], 
+      districts: District[], 
+      layout: CityLayout
+    ): boolean {
+      // Find the closest district
+      if (districts.length === 0) return false;
+      
+      // Try each district in random order
+      const districtIndices = Array.from(Array(districts.length).keys());
+      this.shuffleArray(districtIndices);
+      
+      for (const i of districtIndices) {
+        if (i >= districts.length) continue; // Safety check
+        
+        const district = districts[i];
+        
+        // Try positions in a spiral pattern around the district center
+        let angle = Math.random() * Math.PI * 2; // Start at random angle
+        let distance = 5; // Start close to center
+        let placed = false;
+        
+        // Ensure district has valid coordinates
+        if (district.x < 0 || district.y < 0) continue;
+        
+        while (distance < district.radius && !placed) {
+          // Calculate position
+          const x = Math.floor(district.x + Math.cos(angle) * distance);
+          const y = Math.floor(district.y + Math.sin(angle) * distance);
+          
+          // Check if position is valid
+          if (x >= 0 && x < layout.width && y >= 0 && y < layout.height) {
+            if (grid[y][x] === 0) { // Empty spot
+              building.position = { x, y };
+              grid[y][x] = 3; // Mark as building
+              placed = true;
+              return true;
+            }
+          }
+          
+          // Move along spiral
+          angle += Math.PI / 4;
+          if (angle >= Math.PI * 2) {
+            angle = 0;
+            distance += 5;
+          }
+        }
+      }
+      
+      return false;
+    }
+  
+    /**
+     * Finds any available spot for a building
+     */
+    private findAvailableSpot(building: Building, grid: number[][], layout: CityLayout): boolean {
+      // First try to find any empty spot
+      for (let attempts = 0; attempts < 200; attempts++) {
+        const x = Math.floor(Math.random() * layout.width);
+        const y = Math.floor(Math.random() * layout.height);
+        
+        if (y < grid.length && x < grid[0].length && grid[y][x] === 0) { // Empty spot
+          building.position = { x, y };
+          grid[y][x] = 3; // Mark as building
+          return true;
+        }
+      }
+      
+      // As a last resort, place at a random position (might be in water, but better than 0,0)
+      const x = Math.floor(Math.random() * layout.width);
+      const y = Math.floor(Math.random() * layout.height);
+      
+      building.position = { x, y };
+      // Don't mark grid since this might overlap
+      
+      return true;
+    }
+  
+    /**
+     * Utility function to shuffle an array
+     */
+    private shuffleArray<T>(array: T[]): void {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
       }
     }
   
     /**
-     * Finds any available spot on the map
+     * Create a water map for a specific feature
      */
-    private findAvailableSpot(building: Building, grid: boolean[][], layout: CityLayout): void {
-      let attempts = 0;
-      let placed = false;
+    private createWaterMap(width: number, height: number, waterFeatures: { type: string; points: { x: number; y: number; }[]; }[]): boolean[][] {
+      // Create a 2D array filled with false
+      const waterMap: boolean[][] = Array(height)
+        .fill(false)
+        .map(() => Array(width).fill(false));
       
-      // First try to find a spot near a road
-      const roadSegments = this.generateRoadSegments(layout.roads);
+      // Mark water features
+      waterFeatures.forEach(feature => {
+        if (feature.type === 'lake') {
+          // For lakes, fill in the polygon
+          this.fillPolygon(waterMap, feature.points);
+        } else if (feature.type === 'river') {
+          // For rivers, mark a path with some width
+          this.markPath(waterMap, feature.points, 10); // 10px width for rivers
+        }
+      });
       
-      for (const road of roadSegments) {
-        if (placed) break;
+      return waterMap;
+    }
+  
+    /**
+     * Fill a polygon shape in the water map
+     */
+    private fillPolygon(waterMap: boolean[][], points: {x: number, y: number}[]): void {
+      // Find the bounding box
+      let minX = Number.MAX_VALUE;
+      let minY = Number.MAX_VALUE;
+      let maxX = 0;
+      let maxY = 0;
+      
+      points.forEach(point => {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      });
+      
+      // Constrain to map bounds
+      minX = Math.max(0, Math.floor(minX));
+      minY = Math.max(0, Math.floor(minY));
+      maxX = Math.min(waterMap[0].length - 1, Math.floor(maxX));
+      maxY = Math.min(waterMap.length - 1, Math.floor(maxY));
+      
+      // For each point in the bounding box, check if it's in the polygon
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          if (this.pointInPolygon(x, y, points)) {
+            waterMap[y][x] = true;
+          }
+        }
+      }
+    }
+  
+    /**
+     * Check if a point is inside a polygon using ray casting algorithm
+     */
+    private pointInPolygon(x: number, y: number, polygon: {x: number, y: number}[]): boolean {
+      let inside = false;
+      
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x, yi = polygon[i].y;
+        const xj = polygon[j].x, yj = polygon[j].y;
         
-        // Try a few positions along the road
-        for (let t = 0.1; t < 0.9 && !placed; t += 0.2) {
-          const roadX = road.start.x + (road.end.x - road.start.x) * t;
-          const roadY = road.start.y + (road.end.y - road.start.y) * t;
+        const intersect = ((yi > y) !== (yj > y)) && 
+          (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
           
-          // Try both sides of the road
-          for (let dist = 10; dist <= 30 && !placed; dist += 10) {
-            for (let angle = 0; angle < Math.PI * 2 && !placed; angle += Math.PI / 4) {
-              const x = Math.floor(roadX + Math.cos(angle) * dist);
-              const y = Math.floor(roadY + Math.sin(angle) * dist);
-              
-              if (this.isValidPosition(x, y, layout) && !grid[y][x]) {
-                building.position = { x, y };
-                this.markOccupied(x, y, grid, 8);
-                placed = true;
+        if (intersect) inside = !inside;
+      }
+      
+      return inside;
+    }
+  
+    /**
+     * Mark a path in the water map with a given width
+     */
+    private markPath(waterMap: boolean[][], points: {x: number, y: number}[], width: number): void {
+      // For each segment in the path
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        
+        // Calculate line parameters
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        
+        // Mark points along the line
+        const steps = Math.max(length * 2, 10); // Ensure enough density of points
+        
+        for (let step = 0; step <= steps; step++) {
+          const t = step / steps;
+          const x = Math.floor(p1.x + dx * t);
+          const y = Math.floor(p1.y + dy * t);
+          
+          // Mark points in a circle around this point
+          for (let offsetY = -width/2; offsetY <= width/2; offsetY++) {
+            for (let offsetX = -width/2; offsetX <= width/2; offsetX++) {
+              // Check if within circle
+              if (offsetX * offsetX + offsetY * offsetY <= (width/2) * (width/2)) {
+                const markX = x + offsetX;
+                const markY = y + offsetY;
+                
+                // Check bounds
+                if (markY >= 0 && markY < waterMap.length && 
+                    markX >= 0 && markX < waterMap[0].length) {
+                  waterMap[markY][markX] = true;
+                }
               }
             }
           }
         }
       }
-      
-      // If still not placed, try random positions
-      while (!placed && attempts < 200) {
-        const x = Math.floor(Math.random() * layout.width);
-        const y = Math.floor(Math.random() * layout.height);
-        
-        if (this.isValidPosition(x, y, layout) && !grid[y][x]) {
-          building.position = { x, y };
-          this.markOccupied(x, y, grid, 8);
-          placed = true;
-        }
-        
-        attempts++;
-      }
-      
-      // Last resort
-      if (!placed) {
-        building.position = {
-          x: Math.floor(Math.random() * layout.width),
-          y: Math.floor(Math.random() * layout.height)
-        };
-      }
-    }
-  
-    /**
-     * Marks a road on the grid to prevent buildings from overlapping roads
-     */
-    private markRoadOnGrid(
-      road: { start: { x: number, y: number }, end: { x: number, y: number } },
-      grid: boolean[][],
-      buffer: number
-    ): void {
-      // Use Bresenham's line algorithm to mark road pixels
-      const x0 = Math.floor(road.start.x);
-      const y0 = Math.floor(road.start.y);
-      const x1 = Math.floor(road.end.x);
-      const y1 = Math.floor(road.end.y);
-      
-      const dx = Math.abs(x1 - x0);
-      const dy = Math.abs(y1 - y0);
-      const sx = x0 < x1 ? 1 : -1;
-      const sy = y0 < y1 ? 1 : -1;
-      let err = dx - dy;
-      
-      let x = x0;
-      let y = y0;
-      
-      const width = grid[0].length;
-      const height = grid.length;
-      
-      while (true) {
-        // Mark this point and buffer around it
-        for (let bx = -buffer; bx <= buffer; bx++) {
-          for (let by = -buffer; by <= buffer; by++) {
-            const nx = x + bx;
-            const ny = y + by;
-            
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              grid[ny][nx] = true;
-            }
-          }
-        }
-        
-        if (x === x1 && y === y1) break;
-        
-        const e2 = 2 * err;
-        if (e2 > -dy) {
-          err -= dy;
-          x += sx;
-        }
-        if (e2 < dx) {
-          err += dx;
-          y += sy;
-        }
-      }
-    }
-  
-    /**
-     * Marks a position and surrounding area as occupied
-     */
-    private markOccupied(
-      x: number,
-      y: number,
-      grid: boolean[][],
-      buffer: number
-    ): void {
-      for (let dx = -buffer; dx <= buffer; dx++) {
-        for (let dy = -buffer; dy <= buffer; dy++) {
-          const nx = x + dx;
-          const ny = y + dy;
-          
-          if (this.isValidPosition(nx, ny, { width: grid[0].length, height: grid.length })) {
-            grid[ny][nx] = true;
-          }
-        }
-      }
-    }
-  
-    /**
-     * Checks if a position is valid (within bounds)
-     */
-    private isValidPosition(
-      x: number,
-      y: number,
-      layout: { width: number, height: number }
-    ): boolean {
-      return x >= 0 && x < layout.width && y >= 0 && y < layout.height;
-    }
-  
-    /**
-     * Generates road segments for building placement
-     */
-    private generateRoadSegments(
-      roads: { start: { x: number, y: number }, end: { x: number, y: number } }[]
-    ): { start: { x: number, y: number }, end: { x: number, y: number } }[] {
-      return roads;
-    }
-  
-    /**
-     * Finds intersections between roads
-     */
-    private findRoadIntersections(
-      roads: { start: { x: number, y: number }, end: { x: number, y: number } }[]
-    ): { x: number, y: number }[] {
-      const intersections: { x: number, y: number }[] = [];
-      
-      // Check each pair of roads for intersection
-      for (let i = 0; i < roads.length; i++) {
-        for (let j = i + 1; j < roads.length; j++) {
-          const roadA = roads[i];
-          const roadB = roads[j];
-          
-          const intersection = this.lineIntersection(
-            roadA.start.x, roadA.start.y, roadA.end.x, roadA.end.y,
-            roadB.start.x, roadB.start.y, roadB.end.x, roadB.end.y
-          );
-          
-          if (intersection) {
-            intersections.push(intersection);
-          }
-        }
-      }
-      
-      return intersections;
-    }
-  
-    /**
-     * Calculates the intersection of two line segments
-     */
-    private lineIntersection(
-      x1: number, y1: number, x2: number, y2: number, 
-      x3: number, y3: number, x4: number, y4: number
-    ): { x: number, y: number } | null {
-      // Check if the lines are parallel
-      const denominator = ((y4 - y3) * (x2 - x1)) - ((x4 - x3) * (y2 - y1));
-      if (denominator === 0) {
-        return null;
-      }
-      
-      // Calculate ua and ub
-      const ua = (((x4 - x3) * (y1 - y3)) - ((y4 - y3) * (x1 - x3))) / denominator;
-      const ub = (((x2 - x1) * (y1 - y3)) - ((y2 - y1) * (x1 - x3))) / denominator;
-      
-      // Check if the intersection is on both line segments
-      if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
-        const x = x1 + (ua * (x2 - x1));
-        const y = y1 + (ua * (y2 - y1));
-        return { x, y };
-      }
-      
-      return null;
-    }
-  
-    /**
-     * Shuffles an array in place
-     */
-    private shuffleArray<T>(array: T[]): T[] {
-      for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
-      }
-      return array;
     }
   }
